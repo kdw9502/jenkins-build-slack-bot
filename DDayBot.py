@@ -41,8 +41,15 @@ class DDayBot:
         url = response.body['url']
         socket = await websockets.connect(url, ssl=ssl_context)
 
+        prev_day = -1
+
         while True:
             await asyncio.sleep(0.1)
+
+            if prev_day != datetime.now().day and datetime.now().hour == 9 and channel:
+                self.slack.chat.post_message(channel, self.목록())
+                prev_day = datetime.now().day
+
             json_message = json.loads(await socket.recv())
             channel = ""
             try:
