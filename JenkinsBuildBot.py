@@ -1,7 +1,9 @@
 import asyncio
 
-from BaseBot import BaseBot
 from jenkinsapi.jenkins import Jenkins
+
+from BaseBot import BaseBot
+
 
 # noinspection NonAsciiCharacters
 class JenkinsBuildBot(BaseBot):
@@ -19,16 +21,31 @@ class JenkinsBuildBot(BaseBot):
     def 명령어(self):
         return "\n".join(["명령어 목록"] + list(self.help_dict.values()))
 
-    def 작업검색(self, 검색어):
+    def 작업목록(self):
+        return "\n".join(self.jenkins.get_jobs_list())
+
+    def 작업검색(self, 검색어=''):
         jobs = []
         for job_name in self.jenkins.get_jobs_list():
-            if 검색어.lower() in job_name.lower() and "OLD" not in job_name:
-                jobs.append(job_name.replace(' ','_'))
+            if not 검색어 or 검색어.lower() in job_name.lower() and "OLD" not in job_name:
+                jobs.append(job_name.replace(' ', '_'))
 
         return "\n".join(jobs)
 
-    def 현재빌드목록(self):
-        self.jenkins.get_queue()
+    def 빌드상태(self, 작업이름):
+        if not self.jenkins.has_job(작업이름):
+            return "해당 작업이 존재하지 않습니다."
+
+        job = self.jenkins.get_job(작업이름)
+
+        if not job.is_queued_or_running():
+            return "실행중인 빌드가 없습니다."
+
+        response = self.jenkins.requester.get_and_confirm_status(
+            f"{job.baseurl}/{job.get_last_buildnumber()}/wfapi/describe")
+
+        json = response.json()
+        return f"빌드 실행중입니다. 현재 {json['stages'][-1]['name']} 단계 빌드중입니다."
 
     async def 빌드시작(self, 작업이름):
         if not self.jenkins.has_job(작업이름):
@@ -48,13 +65,13 @@ class JenkinsBuildBot(BaseBot):
                                  "cancel 또는 취소 입력시 빌드 시작을 취소합니다.")
         for param in params:
             param_name = param['name']
-            default_value = param.get('defaultParameterValue',{}).get('value','')
+            default_value = param.get('defaultParameterValue', {}).get('value', '')
             self._send_slack_message(f"빌드 파라미터 {param_name} 의 값을 입력해주세요. "
                                      f"기본값: {default_value}")
 
             await asyncio.sleep(0.1)
             input_param = await self._receive_slack_message()
-            input_param = input_param.strip().replace(' ','').replace('\n','').replace('\t','')
+            input_param = input_param.strip().replace(' ', '').replace('\n', '').replace('\t', '')
 
             if input_param == 'ad':
                 break
@@ -69,7 +86,7 @@ class JenkinsBuildBot(BaseBot):
 
         build_num = job.get_last_buildnumber()
 
-        return f"{작업이름} #{build_num}을 작하였습니다."
+        return f"{작업이름} #{build_num}을 시작하였습니다."
 
     async def 빌드취소(self, 작업이름):
         if not self.jenkins.has_job(작업이름):
