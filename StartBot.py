@@ -4,6 +4,7 @@ from slacker import Slacker
 
 from JenkinsBuildBot import JenkinsBuildBot
 
+
 async def main():
     bot_token = ""
     bot_slack = Slacker(bot_token)

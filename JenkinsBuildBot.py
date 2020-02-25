@@ -102,7 +102,3 @@ class JenkinsBuildBot(BaseBot):
         build_num = job.get_last_buildnumber()
 
         return f"{작업이름} #{build_num}을 취소하였습니다."
-
-    @staticmethod
-    def _exception_handle_and_return_message(exception):
-        return str(exception)

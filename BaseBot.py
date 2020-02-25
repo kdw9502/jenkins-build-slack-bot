@@ -38,7 +38,6 @@ class BaseBot:
         response = ""
 
         while True:
-
             try:
                 message = await self._receive_slack_message()
 
@@ -70,12 +69,8 @@ class BaseBot:
 
     @staticmethod
     def _exception_handle_and_return_message(exception):
-        if exception is TypeError:
-            error_message = str(exception)
-            if "positional" in error_message:
-                message = "명령어의 인자 갯수가 맞지 않습니다. 하나의 인자 내 문자열의 띄어쓰기는 _ 로 대신 사용해주세요."
-            elif "int()":
-                message = "날짜는 숫자로만 입력해주세요."
+        if exception is TypeError and "positional" in str(exception):
+            message = "명령어의 인자 갯수가 맞지 않습니다. 하나의 인자 내 문자열의 띄어쓰기는 _ 로 대신 사용해주세요."
 
         else:
             message = "error: " + str(exception)
