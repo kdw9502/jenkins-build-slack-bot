@@ -4,8 +4,6 @@ from slacker import Slacker
 
 from DDayBot import DDayBot
 
-json_file_name = "jsonData.json";
-
 
 async def main():
     bot_token = ""
