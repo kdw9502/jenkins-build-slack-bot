@@ -9,7 +9,7 @@ from BaseBot import BaseBot
 class JenkinsBuildBot(BaseBot):
     def __init__(self, bot_slack, user_slack):
         self.favorites = []
-        self.jenkins = Jenkins("http://10.0.47.146:8080/", ssl_verify=False)
+        self.jenkins = Jenkins("", ssl_verify=False)
         BaseBot.__init__(self, bot_slack, user_slack)
 
     def _load_from_file(self):
