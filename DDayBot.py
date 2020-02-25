@@ -16,7 +16,7 @@ class DDayBot(BaseBot):
 
     def _write_to_file(self):
         with open(self.json_file_name, "w+") as file:
-            file.write(self.ToJson(self.events))
+            file.write(self._to_json(self.events))
             file.truncate()
 
     def _load_from_file(self):

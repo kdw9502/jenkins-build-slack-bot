@@ -19,8 +19,8 @@ class BaseBot:
         self._load_from_file()
 
     def _set_command_info(self):
-        self.command_dict = {function_name: getattr(type(self), function_name) for function_name in dir(self)
-                             if callable(getattr(type(self), function_name)) and not function_name.startswith("_")}
+        self.command_dict = {function_name: getattr(self, function_name) for function_name in dir(self)
+                             if callable(getattr(self, function_name)) and not function_name.startswith("_")}
         self.parameter_dict = {name: [i for i in inspect.signature(function).parameters.keys() if i not in ["self"]] for
                                name, function in self.command_dict.items()}
         self.help_dict = {function_name: f"!{function_name}{''.join([' ' + i for i in args])}" for function_name, args
@@ -49,13 +49,14 @@ class BaseBot:
                     if message:
                         response = self._run(message)
             except Exception as e:
-                response = self.exception_handle_and_return_message(e)
+                response = self._exception_handle_and_return_message(e)
 
             if response and self.channel:
                 self.user_slack.chat.post_message(self.channel, response)
+                response = ""
 
     @staticmethod
-    def exception_handle_and_return_message(exception):
+    def _exception_handle_and_return_message(exception):
         if exception is TypeError:
             error_message = str(exception)
             if "positional" in error_message:
@@ -78,7 +79,7 @@ class BaseBot:
         if command not in self.command_dict:
             return "잘못된 명령어 입니다. \"!명령어\"를 입력하시면 명령어 목록을 표시합니다."
 
-        return self.command_dict[command](self, *params)
+        return self.command_dict[command](*params)
 
     def _load_from_file(self):
         raise NotImplementedError()
@@ -93,16 +94,16 @@ class BaseBot:
         korean_count = 0
 
         for character in string:
-            if cls.is_korean(character):
+            if cls._is_korean(character):
                 korean_count += 1
 
         space = reserve - korean_count * 2 - len(string)
 
         return " " * space * (not left_align) + string + " " * space * left_align
 
-    def _get_bot_message_timestamps(self):
+    def _get_bot_message_timestamps(self, limit):
         timestamps = []
-        response = self.user_slack.conversations.history(self.channel, limit=30)
+        response = self.user_slack.conversations.history(self.channel, limit=limit)
 
         if response.successful:
             json_response = json.loads(response.raw)
@@ -114,18 +115,18 @@ class BaseBot:
 
         return timestamps
 
-    def clear(self):
-        for timestamp in self._get_bot_message_timestamps():
+    def clear(self, limit=30):
+        for timestamp in self._get_bot_message_timestamps(limit):
             try:
                 self.user_slack.chat.delete(self.channel, timestamp)
             except slacker.Error:
                 self.bot_slack.chat.delete(self.channel, timestamp)
 
     @staticmethod
-    def is_korean(character):
+    def _is_korean(character):
         return ord('가') < ord(character) < ord('힇')
 
     @staticmethod
-    def ToJson(obj):
+    def _to_json(obj):
         return json.dumps(obj, default=lambda x: x.isoformat(' ', 'seconds') if type(x) == datetime else x.__dict__,
                           sort_keys=True, indent=4)
