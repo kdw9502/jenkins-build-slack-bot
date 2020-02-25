@@ -8,10 +8,13 @@ json_file_name = "jsonData.json";
 
 
 async def main():
-    token = ""
-    slack = Slacker(token)
+    bot_token = ""
+    bot_slack = Slacker(bot_token)
 
-    bot = DDayBot(slack)
+    user_token = ""
+    user_slack = Slacker(user_token)
+
+    bot = DDayBot(bot_slack, user_slack)
     await bot._listen()
 
 

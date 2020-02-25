@@ -5,6 +5,7 @@ import json
 import os
 import ssl
 from datetime import datetime
+import slacker
 
 import certifi
 import websockets
@@ -14,14 +15,9 @@ from Event import Event
 json_file_name = "jsonData.json"
 
 
-def ToJson(obj):
-    return json.dumps(obj, default=lambda x: x.isoformat(' ', 'seconds') if type(x) == datetime else x.__dict__,
-                      sort_keys=True, indent=4)
-
-
 # noinspection PyPep8Naming,NonAsciiCharacters
 class DDayBot:
-    def __init__(self, slack):
+    def __init__(self, bot_slack, user_slack):
 
         self.command_dict = {function_name: getattr(DDayBot, function_name) for function_name in dir(self)
                              if callable(getattr(DDayBot, function_name)) and not function_name.startswith("_")}
@@ -29,7 +25,9 @@ class DDayBot:
                                name, function in self.command_dict.items()}
         self.help_dict = {function_name: f"!{function_name}{''.join([' ' + i for i in args])}" for function_name, args
                           in self.parameter_dict.items()}
-        self.slack = slack
+        self.bot_slack = bot_slack
+        self.user_slack = user_slack
+        self.channel = None
 
         self._load_from_file()
 
@@ -37,25 +35,21 @@ class DDayBot:
         ssl_context = ssl.create_default_context()
         ssl_context.load_verify_locations(certifi.where())
 
-        response = self.slack.rtm.start()
-        url = response.body['url']
+        rtm_response = self.bot_slack.rtm.start()
+        url = rtm_response.body['url']
         socket = await websockets.connect(url, ssl=ssl_context)
 
-        prev_day = -1
-        channel = "team_client_dev"
+        response = ""
+
         while True:
             await asyncio.sleep(0.1)
 
-            if prev_day != datetime.now().day and datetime.now().hour == 9 and channel:
-                self.slack.chat.post_message(channel, self.목록())
-                prev_day = datetime.now().day
-
             json_message = json.loads(await socket.recv())
-            channel = ""
+
             try:
                 if json_message.get("type") == "message":
                     message = json_message.get("text")
-                    channel = json_message.get("channel")
+                    self.channel = json_message.get("channel")
 
                     if message:
                         response = self._run(message)
@@ -66,11 +60,15 @@ class DDayBot:
                 elif "int()":
                     response = "날짜는 숫자로만 입력해주세요."
 
+                response += str(type_error)
+                # raise type_error
+
             except Exception as e:
                 response = "error: " + str(e)
+                raise e
 
-            if response and channel:
-                self.slack.chat.post_message(channel, response)
+            if response and self.channel:
+                self.user_slack.chat.post_message(self.channel, response)
 
     def _run(self, command):
         if not command.startswith("!"):
@@ -117,14 +115,28 @@ class DDayBot:
         events = sorted(self.events, key=lambda x: x.date)
 
         for event in events:
-            format_name = event.name
-            format_name = event.name + " "*((15 - len(format_name))*3) + " " * (format_name.count(" ")*2)
-            event_strings.append(f"{format_name} {event.date.isoformat(' ', 'seconds')} D{-event.remainDayFromNow()}")
+            format_name = DDayBot._slack_format_korean(event.name, 15)
+
+            event_strings.append(f"{format_name} {event.date.isoformat(' ', 'minutes')} D{-event.remainDayFromNow()}")
 
         if len(event_strings) == 0:
             return "이벤트가 없습니다."
 
         return "\n".join(event_strings)
+
+    @staticmethod
+    def _slack_format_korean(string, reserve, left_align=True):
+
+        reserve = reserve * 3
+        korean_count = 0
+
+        for character in string:
+            if is_korean(character):
+                korean_count += 1
+
+        space = reserve - korean_count * 2 - len(string)
+
+        return " " * space * (not left_align) + string + " " * space * left_align
 
     def 삭제(self, 이벤트이름):
         for event in self.events:
@@ -133,3 +145,33 @@ class DDayBot:
                 self._write_to_file()
                 break
         return f"{이벤트이름}이 삭제되었습니다."
+
+    def _get_bot_message_timestamps(self):
+        timestamps = []
+        response = self.user_slack.conversations.history(self.channel, limit=30)
+
+        if response.successful:
+            json_response = json.loads(response.raw)
+            messages = json_response['messages']
+
+            for message in messages:
+                if "bot_id" in message and message['username'] == 'D-Day':
+                    timestamps.append(message['ts'])
+
+        return timestamps
+
+    def clear(self):
+        for timestamp in self._get_bot_message_timestamps():
+            try:
+                self.user_slack.chat.delete(self.channel, timestamp)
+            except slacker.Error:
+                self.bot_slack.chat.delete(self.channel, timestamp)
+
+
+def is_korean(character):
+    return ord('가') < ord(character) < ord('힇')
+
+
+def ToJson(obj):
+    return json.dumps(obj, default=lambda x: x.isoformat(' ', 'seconds') if type(x) == datetime else x.__dict__,
+                      sort_keys=True, indent=4)

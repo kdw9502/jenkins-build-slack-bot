@@ -6,6 +6,9 @@ class Event:
         self.name = name
         self.date = date
 
+        self.owner = ""
+        self.is_private = False
+
     def remainDayFromNow(self):
 
         target_year_month_day = datetime(self.date.year, self.date.month, self.date.day)
@@ -23,10 +26,10 @@ class Event:
             events = []
             for json_object in json:
                 date = datetime.fromisoformat(json_object["date"])
-                event = Event(json_object["name"], date)
+                event = cls(json_object["name"], date)
                 events.append(event)
             return events
 
         elif type(json) is dict:
             date = datetime.fromisoformat(json["date"])
-            return Event(json["name"], date)
+            return cls(json["name"], date)
