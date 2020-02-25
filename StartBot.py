@@ -2,8 +2,7 @@ import asyncio
 
 from slacker import Slacker
 
-from DDayBot import DDayBot
-
+from JenkinsBuildBot import JenkinsBuildBot
 
 async def main():
     bot_token = ""
@@ -12,7 +11,7 @@ async def main():
     user_token = ""
     user_slack = Slacker(user_token)
 
-    bot = DDayBot(bot_slack, user_slack)
+    bot = JenkinsBuildBot(bot_slack, user_slack)
     await bot._listen()
 
 

@@ -14,6 +14,7 @@ class BaseBot:
         self.bot_slack = bot_slack
         self.user_slack = user_slack
         self.channel = None
+        self._socket = None
         self._set_command_info()
 
         self._load_from_file()
@@ -32,35 +33,47 @@ class BaseBot:
 
         rtm_response = self.bot_slack.rtm.start()
         url = rtm_response.body['url']
-        socket = await websockets.connect(url, ssl=ssl_context)
+        self._socket = await websockets.connect(url, ssl=ssl_context)
 
         response = ""
 
         while True:
-            await asyncio.sleep(0.1)
-
-            json_message = json.loads(await socket.recv())
 
             try:
-                if json_message.get("type") == "message":
-                    message = json_message.get("text")
-                    self.channel = json_message.get("channel")
+                message = await self._receive_slack_message()
 
-                    if message:
-                        response = self._run(message)
+                if message:
+                    response = await self._run(message)
+
             except Exception as e:
                 response = self._exception_handle_and_return_message(e)
 
             if response and self.channel:
-                self.user_slack.chat.post_message(self.channel, response)
+                self._send_slack_message(response)
                 response = ""
+
+    async def _receive_slack_message(self):
+
+        while True:
+            json_message = json.loads(await self._socket.recv())
+            if json_message.get("type") == "message" and 'bot_id' not in json_message:
+                message = json_message.get("text")
+                self.channel = json_message.get("channel")
+                return message
+            await asyncio.sleep(0.05)
+
+    def _send_slack_message(self, message):
+        try:
+            self.user_slack.chat.post_message(self.channel, message[:10000])
+        except slacker.Error as e:
+            self.bot_slack.chat.post_message(self.channel, message[:10000])
 
     @staticmethod
     def _exception_handle_and_return_message(exception):
         if exception is TypeError:
             error_message = str(exception)
             if "positional" in error_message:
-                message = "명령어의 인자 갯수가 맞지 않습니다. 띄어쓰기는 _ 로 대신 사용해주세요."
+                message = "명령어의 인자 갯수가 맞지 않습니다. 하나의 인자 내 문자열의 띄어쓰기는 _ 로 대신 사용해주세요."
             elif "int()":
                 message = "날짜는 숫자로만 입력해주세요."
 
@@ -69,7 +82,7 @@ class BaseBot:
 
         return message
 
-    def _run(self, command):
+    async def _run(self, command):
         if not command.startswith("!"):
             return
         command, *params = command[1:].split(" ")
@@ -79,7 +92,12 @@ class BaseBot:
         if command not in self.command_dict:
             return "잘못된 명령어 입니다. \"!명령어\"를 입력하시면 명령어 목록을 표시합니다."
 
-        return self.command_dict[command](*params)
+        function = self.command_dict[command]
+
+        if asyncio.iscoroutinefunction(function):
+            return await function(*params)
+        else:
+            return function(*params)
 
     def _load_from_file(self):
         raise NotImplementedError()
@@ -103,7 +121,10 @@ class BaseBot:
 
     def _get_bot_message_timestamps(self, limit):
         timestamps = []
-        response = self.user_slack.conversations.history(self.channel, limit=limit)
+        try:
+            response = self.user_slack.conversations.history(self.channel, limit=limit)
+        except slacker.Error:
+            response = self.bot_slack.conversations.history(self.channel, limit=limit)
 
         if response.successful:
             json_response = json.loads(response.raw)
