@@ -42,7 +42,7 @@ class DDayBot:
         socket = await websockets.connect(url, ssl=ssl_context)
 
         prev_day = -1
-
+        channel = "team_client_dev"
         while True:
             await asyncio.sleep(0.1)
 
@@ -119,7 +119,7 @@ class DDayBot:
         for event in events:
             format_name = event.name
             format_name = event.name + " "*((15 - len(format_name))*3) + " " * (format_name.count(" ")*2)
-            event_strings.append(f"{format_name} {event.date.isoformat(' ', 'seconds')} D-{event.remainDayFromNow()}")
+            event_strings.append(f"{format_name} {event.date.isoformat(' ', 'seconds')} D{-event.remainDayFromNow()}")
 
         if len(event_strings) == 0:
             return "이벤트가 없습니다."
@@ -130,5 +130,6 @@ class DDayBot:
         for event in self.events:
             if event.name == 이벤트이름:
                 self.events.remove(event)
+                self._write_to_file()
                 break
         return f"{이벤트이름}이 삭제되었습니다."
