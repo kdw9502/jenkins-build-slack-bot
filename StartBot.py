@@ -10,13 +10,14 @@ async def main():
 
     parser.add_argument('bot_token',help='Bot User OAuth Access Token')
     parser.add_argument('user_token', help='OAuth Access Token')
+    parser.add_argument('jenkins_url', help='jenkins server url')
 
     args = parser.parse_args()
 
     bot_slack = Slacker(args.bot_token)
     user_slack = Slacker(args.user_token)
 
-    bot = JenkinsBuildBot(bot_slack, user_slack)
+    bot = JenkinsBuildBot(bot_slack, user_slack, args.jenkins_url)
     await bot._listen()
 
 

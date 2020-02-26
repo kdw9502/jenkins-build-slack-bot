@@ -7,9 +7,9 @@ from BaseBot import BaseBot
 
 # noinspection NonAsciiCharacters
 class JenkinsBuildBot(BaseBot):
-    def __init__(self, bot_slack, user_slack):
+    def __init__(self, bot_slack, user_slack, jenkins_url):
         self.favorites = []
-        self.jenkins = Jenkins("http://10.0.47.146:8080/", ssl_verify=False)
+        self.jenkins = Jenkins(jenkins_url, ssl_verify=False)
         BaseBot.__init__(self, bot_slack, user_slack)
 
     def _load_from_file(self):
