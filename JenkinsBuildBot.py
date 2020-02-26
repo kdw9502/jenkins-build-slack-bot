@@ -22,7 +22,7 @@ class JenkinsBuildBot(BaseBot):
         return "\n".join(["명령어 목록"] + list(self.help_dict.values()))
 
     def 작업목록(self):
-        return "\n".join(self.jenkins.get_jobs_list())
+        return self.작업검색()
 
     def 작업검색(self, 검색어=''):
         jobs = []
