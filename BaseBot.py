@@ -13,11 +13,26 @@ class BaseBot:
     def __init__(self, bot_slack, user_slack):
         self.bot_slack = bot_slack
         self.user_slack = user_slack
-        self.channel = None
-        self._socket = None
-        self._set_command_info()
+        self._last_message_json = None
 
+        self._socket = None
+
+        self._set_command_info()
         self._load_from_file()
+
+    @property
+    def _last_message_channel(self):
+        if self._last_message_json:
+            return self._last_message_json['channel']
+
+        return ""
+
+    @property
+    def _last_message_user(self):
+        if self._last_message_json:
+            return self._last_message_json['user']
+
+        return ""
 
     def _set_command_info(self):
         self.command_dict = {function_name: getattr(self, function_name) for function_name in dir(self)
@@ -35,37 +50,38 @@ class BaseBot:
         url = rtm_response.body['url']
         self._socket = await websockets.connect(url, ssl=ssl_context)
 
-        response = ""
-
         while True:
-            try:
-                message = await self._receive_slack_message()
+            message = await self._receive_user_message()
+            await self._treat_received_message(message)
 
-                if message:
-                    response = await self._run(message)
+    async def _treat_received_message(self, message):
+        try:
+            response = await self._run_command(message)
 
-            except Exception as e:
-                response = self._exception_handle_and_return_message(e)
+        except Exception as e:
+            response = self._exception_handle_and_return_message(e)
 
-            if response and self.channel:
-                self._send_slack_message(response)
-                response = ""
+        if response and self._last_message_json:
+            self._send_slack_message(response)
 
-    async def _receive_slack_message(self):
-
+    async def _receive_user_message(self):
         while True:
             json_message = json.loads(await self._socket.recv())
-            if json_message.get("type") == "message" and 'bot_id' not in json_message:
+            is_user_message = json_message.get("type") == "message" \
+                              and 'bot_id' not in json_message \
+                              and 'subtype' not in json_message
+
+            if is_user_message and 'text' in json_message:
+                self._last_message_json = json_message
                 message = json_message.get("text")
-                self.channel = json_message.get("channel")
                 return message
             await asyncio.sleep(0.05)
 
     def _send_slack_message(self, message):
         try:
-            self.user_slack.chat.post_message(self.channel, message[:10000])
+            return self.user_slack.chat.post_message(self._last_message_channel, message[:10000])
         except slacker.Error as e:
-            self.bot_slack.chat.post_message(self.channel, message[:10000])
+            return self.bot_slack.chat.post_message(self._last_message_channel, message[:10000])
 
     @staticmethod
     def _exception_handle_and_return_message(exception):
@@ -77,7 +93,7 @@ class BaseBot:
 
         return message
 
-    async def _run(self, command):
+    async def _run_command(self, command):
         if not command.startswith("!"):
             return
         command, *params = command[1:].split(" ")
@@ -114,29 +130,44 @@ class BaseBot:
 
         return " " * space * (not left_align) + string + " " * space * left_align
 
-    def _get_bot_message_timestamps(self, limit):
-        timestamps = []
-        try:
-            response = self.user_slack.conversations.history(self.channel, limit=limit)
-        except slacker.Error:
-            response = self.bot_slack.conversations.history(self.channel, limit=limit)
-
-        if response.successful:
-            json_response = json.loads(response.raw)
-            messages = json_response['messages']
-
-            for message in messages:
-                if "bot_id" in message and message['username'] == 'D-Day':
-                    timestamps.append(message['ts'])
-
-        return timestamps
-
     def clear(self, limit=30):
         for timestamp in self._get_bot_message_timestamps(limit):
             try:
-                self.user_slack.chat.delete(self.channel, timestamp)
+                self.user_slack.chat.delete(self._last_message_channel, timestamp)
             except slacker.Error:
-                self.bot_slack.chat.delete(self.channel, timestamp)
+                self.bot_slack.chat.delete(self._last_message_channel, timestamp)
+
+    def _get_bot_message_timestamps(self, limit):
+        timestamps = []
+        try:
+            response = self.user_slack.conversations.history(self._last_message_channel, limit=limit)
+        except slacker.Error:
+            response = self.bot_slack.conversations.history(self._last_message_channel, limit=limit)
+
+        test_response = self._send_slack_message(" ")
+
+        if test_response.successful:
+            test_response_json = json.loads(test_response.raw)
+            bot_id = test_response_json.get('message', {}).get('bot_id')
+            test_message_timestamp = test_response_json.get('message', {}).get('ts')
+
+            timestamps.append(test_message_timestamp)
+
+            if response.successful:
+                json_response = json.loads(response.raw)
+                messages = json_response['messages']
+
+                for message in messages:
+                    if "bot_id" in message and message['bot_id'] == bot_id:
+                        timestamps.append(message['ts'])
+
+        return timestamps
+
+    def _quit(self):
+        try:
+            self.user_slack.conversations.leave(self._last_message_channel)
+        except slacker.Error as e:
+            self.bot_slack.conversations.leave(self._last_message_channel)
 
     @staticmethod
     def _is_korean(character):

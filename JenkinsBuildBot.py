@@ -9,7 +9,7 @@ from BaseBot import BaseBot
 class JenkinsBuildBot(BaseBot):
     def __init__(self, bot_slack, user_slack):
         self.favorites = []
-        self.jenkins = Jenkins("", ssl_verify=False)
+        self.jenkins = Jenkins("http://10.0.47.146:8080/", ssl_verify=False)
         BaseBot.__init__(self, bot_slack, user_slack)
 
     def _load_from_file(self):
@@ -56,8 +56,22 @@ class JenkinsBuildBot(BaseBot):
         if job.is_queued_or_running():
             return "이미 실행중인 빌드가 있습니다."
 
-        build_parameter_dict = dict()
+        build_parameter_dict = await self._start_conversation_and_return_parameter_dict(job)
 
+        if build_parameter_dict is None:
+            return "빌드시작을 취소했습니다."
+
+        job.invoke(build_params=build_parameter_dict)
+
+        build_num = job.get_last_buildnumber()
+
+        return f"{작업이름} #{build_num}을 시작하였습니다."
+
+    async def _start_conversation_and_return_parameter_dict(self, job):
+        channel = self._last_message_channel
+        user = self._last_message_user
+
+        parameter_dict = dict()
         params = job.get_params()
 
         self._send_slack_message("빌드 파라미터를 입력해주세요.\n"
@@ -69,24 +83,54 @@ class JenkinsBuildBot(BaseBot):
             self._send_slack_message(f"빌드 파라미터 {param_name} 의 값을 입력해주세요. "
                                      f"기본값: {default_value}")
 
-            await asyncio.sleep(0.1)
-            input_param = await self._receive_slack_message()
-            input_param = input_param.strip().replace(' ', '').replace('\n', '').replace('\t', '')
+            while True:
+                input_parameter = await self._get_conversation_input(channel, user)
 
-            if input_param == 'ad':
+                input_parameter = input_parameter.strip().replace(' ', '').replace('\n', '').replace('\t', '')
+
+                if self._validate_input_parameter(param, input_parameter):
+                    break
+
+                self._send_slack_message('잘못된 입력입니다. 다시 입력해주세요.')
+
+            if input_parameter == 'ad':
                 break
-            elif input_param == 'd':
+            elif input_parameter == 'd':
                 pass
-            elif input_param == '취소' or input_param == 'cancel':
-                return "빌드시작을 취소했습니다."
+            elif input_parameter == '취소' or input_parameter == 'cancel':
+                return None
             else:
-                build_parameter_dict[param_name] = input_param
+                if input_parameter in ['False', 'True']:
+                    input_parameter = input_parameter.lower()
 
-        job.invoke(build_params=build_parameter_dict)
+                parameter_dict[param_name] = input_parameter
 
-        build_num = job.get_last_buildnumber()
+        return parameter_dict
 
-        return f"{작업이름} #{build_num}을 시작하였습니다."
+    @staticmethod
+    def _validate_input_parameter(param, input_parameter):
+        is_bool_parameter = 'bool' in param['type'].lower()
+
+        if is_bool_parameter and input_parameter not in ['true', 'True', 'false', 'False',
+                                                         'ad', 'd', '취소', 'cancel']:
+            return False
+
+        return True
+
+    async def _get_conversation_input(self, channel, user):
+        while True:
+            received_message = await self._receive_user_message()
+
+            # FIXME: 지금은 대화메세지가 아니면 다시 일반 명령어로 처리해주지만, 구조적 개선이 필요하다.
+            # FIXME: RTM 메세지 처리 클래스, 대화 클래스, 봇 클래스가 분리되는 편이 좋다.
+            if self._last_message_user != user or self._last_message_channel != channel:
+                await self._treat_received_message(message=received_message)
+
+            else:
+                break
+            await asyncio.sleep(0.1)
+
+        return received_message
 
     async def 빌드취소(self, 작업이름):
         if not self.jenkins.has_job(작업이름):
