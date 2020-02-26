@@ -43,6 +43,7 @@ class BaseBot:
                           in self.parameter_dict.items()}
 
     async def _listen(self):
+        print("Successfully Start Bot")
         ssl_context = ssl.create_default_context()
         ssl_context.load_verify_locations(certifi.where())
 
